@@ -1,0 +1,48 @@
+5 ^ 5 * 4 - 3
+		-
+			3
+	 *
+		 4
+	^
+5 5
+
+5 + (5 - 3)
+
++5
+-5,3
+
+Algo:
+	expression ->
+		loop until find operator then recurse right
+			if right expression is number we set as right tree
+			if operator we check operator precedence
+				low -> right
+				high -> left
+
+
+expr left -> 5
+expr right -> 5
+expr op -> ^
+expr = expr { left: expr, right: none }
+
+expr rigth -> 4
+expr op -> *
+expr = expr { left: expr, right none }
+
+expr right -> 3
+expr op -> -
+
+--------------
+
+--------------
+
+5 ^ 5
+	* 4
+		- 3
+
+
+5 * 4 * 3 * 2 * 1
+*1
+*2
+*3
+*54
