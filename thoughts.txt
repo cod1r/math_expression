@@ -6,7 +6,7 @@
 	^
 5 5
 
-5 + (5 - 3)
+5 + 5 - 3
 
 +5
 -5,3
@@ -18,7 +18,22 @@ Algo:
 			if operator we check operator precedence
 				low -> right
 				high -> left
-
+5 ^ 5 * 4 - 3
+	5: expression
+	^: operator
+	recurse
+		5 * 4 - 3
+			5: expression
+			*: operator
+			recurse
+				4 - 3
+					4: expression
+					-: operator
+					recurse
+						3
+						3: expression
+				3 -> right tree
+				- -> operator but we need to compare to *
 
 expr left -> 5
 expr right -> 5
@@ -46,3 +61,9 @@ expr op -> -
 *2
 *3
 *54
+
+
+
+
+TODO:
+5 + (5) * 5
