@@ -47,7 +47,7 @@ impl Clone for Literal {
                 Ops::Add => Literal::Op(Ops::Add),
                 Ops::Subtract => Literal::Op(Ops::Subtract),
                 Ops::Multiply => Literal::Op(Ops::Multiply),
-                Ops::Exponent => Literal::Op(Ops::Multiply),
+                Ops::Exponent => Literal::Op(Ops::Exponent),
                 Ops::Divide => Literal::Op(Ops::Divide),
             },
         }
@@ -59,7 +59,7 @@ impl Clone for Ops {
             Ops::Add => Ops::Add,
             Ops::Subtract => Ops::Subtract,
             Ops::Multiply => Ops::Multiply,
-            Ops::Exponent => Ops::Multiply,
+            Ops::Exponent => Ops::Exponent,
             Ops::Divide => Ops::Divide,
         }
     }
@@ -79,7 +79,7 @@ fn math_lexer(math_expr: String) -> Result<Vec<Token>, &'static str> {
                 && math_expr_bytes[idx] >= '0' as u8
                 && math_expr_bytes[idx] <= '9' as u8
             {
-                token += &math_expr_bytes[idx].to_string();
+                token += &(math_expr_bytes[idx] as char).to_string();
                 idx += 1;
             }
             tokens.push(Token::Number(
@@ -116,14 +116,14 @@ fn math_lexer(math_expr: String) -> Result<Vec<Token>, &'static str> {
     }
     Ok(tokens)
 }
-fn get_precedence(op: &Ops) {
+fn get_precedence(op: &Ops) -> u8 {
     match op {
         Ops::Add => 1,
         Ops::Subtract => 1,
         Ops::Multiply => 2,
         Ops::Divide => 2,
         Ops::Exponent => 3,
-    };
+    }
 }
 /*
  * BINARYEXPR -> OPENPARENTH BINARYEXPR CLOSEPARENTH | BINARYEXPR OPERATOR BINARYEXPR | NUMBER
@@ -135,7 +135,6 @@ fn math_parse(
     expr: &mut Expr,
 ) -> Result<(), &'static str> {
     if *current >= tokens.len() {
-        expr.lit = None;
         return Ok(());
     }
     match &tokens[*current] {
@@ -149,8 +148,8 @@ fn math_parse(
                 return Err("Unclosed opening parenthesis");
             }
             match &tokens[*current] {
-                Token::CloseParenth => {},
-                _ => return Err("Unclosed opening parenthesis")
+                Token::CloseParenth => {}
+                _ => return Err("Unclosed opening parenthesis"),
             }
         }
         Token::Number(num) => {
@@ -165,6 +164,11 @@ fn math_parse(
                     if *current >= tokens.len() {
                         return Err("Expected Open Parenthesis or Number.");
                     }
+                    *expr = Expr {
+                        lit: Some(Literal::Op(op.clone())),
+                        left: Some(Box::new(expr.clone())),
+                        right: None,
+                    };
                     match &tokens[*current] {
                         Token::Number(right_num) => {
                             *current += 1;
@@ -180,23 +184,24 @@ fn math_parse(
                                             left: None,
                                             right: None,
                                         }));
-                                        *expr = Expr {
-                                            lit: Some(Literal::Op(op.clone())),
-                                            left: Some(Box::new(right_e.clone())),
-                                            right: Some(Box::new(expr.clone())),
-                                        };
+                                        expr.right = Some(Box::new(right_e.clone()));
                                     } else if second_op_precedence <= first_op_precedence {
-                                        *expr = right_e.clone();
-                                        expr.left = Some(Box::new(Expr {
-                                            lit: Some(Literal::Op(op.clone())),
+                                        expr.right = Some(Box::new(Expr {
+                                            lit: Some(Literal::Number(*right_num)),
                                             left: None,
                                             right: None,
                                         }));
+                                        right_e.left = Some(Box::new(expr.clone()));
+                                        *expr = right_e.clone();
                                     }
                                 }
                                 None => {
-                                    return Ok(());
-                                },
+                                    expr.right = Some(Box::new(Expr {
+                                        lit: Some(Literal::Number(*right_num)),
+                                        left: None,
+                                        right: None,
+                                    }));
+                                }
                                 _ => {
                                     return Err("expected operator after number.");
                                 }
@@ -208,9 +213,8 @@ fn math_parse(
                             math_parse(tokens, start, current, &mut right_e)?;
                             match right_e.lit {
                                 Some(_) => {
-                                    expr.left = Some(Box::new(right_e));
-                                    expr.lit = Some(Literal::Op(op.clone()));
-                                },
+                                    expr.right = Some(Box::new(right_e.clone()));
+                                }
                                 _ => {
                                     return Err("Expected closing parenth or something.");
                                 }
@@ -218,28 +222,53 @@ fn math_parse(
                         }
                         _ => println!("Expected Open Parenthesis or Number."),
                     }
-                    *current += 1;
                 }
                 _ => {
                     return Err("expected operator.");
                 }
             }
-            *current += 1;
         }
         Token::CloseParenth => {
-            return Ok(());
+            todo!("WE NEED TO RECURSE PAST THE CLOSE PARENTH");
         }
         Token::Operator(op) => {
+            todo!("WE NEED TO CHECK HOW WE DO THE TREE BUILDING CORRECTLY");
             match &tokens[*start] {
-                Token::Number(_) => {
-                },
-                _ => return Err("operator with no operands?")
+                Token::Number(_) => {}
+                _ => return Err("operator with no operands?"),
             }
             *current += 1;
             let mut right_e = Expr::new();
             math_parse(tokens, start, current, &mut right_e)?;
             expr.lit = Some(Literal::Op(op.clone()));
-            expr.right = Some(Box::new(right_e.clone()));
+            match right_e.lit {
+                Some(Literal::Op(ref right_op)) => {
+                    let first_op_precedence = get_precedence(op);
+                    let second_op_precedence = get_precedence(right_op);
+                    if first_op_precedence < second_op_precedence {
+                        *expr = Expr {
+                            lit: Some(Literal::Op(op.clone())),
+                            left: None,
+                            right: Some(Box::new(right_e.clone())),
+                        };
+                    } else if second_op_precedence <= first_op_precedence {
+                        right_e.left = Some(Box::new(expr.clone()));
+                        *expr = right_e.clone();
+                    }
+                }
+                Some(Literal::Number(num)) => {
+                    *expr = Expr {
+                        lit: Some(Literal::Op(op.clone())),
+                        left: None,
+                        right: Some(Box::new(Expr {
+                            lit: Some(Literal::Number(num)),
+                            left: None,
+                            right: None,
+                        }))
+                    };
+                }
+                None => return Err("expected right operand.")
+            }
         }
     }
     Ok(())
@@ -247,139 +276,80 @@ fn math_parse(
 fn traverse_expr_tree(expr: &Expr) -> i64 {
     match &expr.lit {
         Some(Literal::Number(num)) => *num,
-        Some(Literal::Op(op)) => {
-            match op {
-                Ops::Add => {
-                    match &expr.left {
-                        Some(l) => {
-                            match &expr.right {
-                                Some(r) => {
-                                    traverse_expr_tree(&l) + traverse_expr_tree(&r)
-                                },
-                                None => traverse_expr_tree(&l),
-                            }
-                        },
-                        None => {
-                            match &expr.right {
-                                Some(r) => {
-                                    traverse_expr_tree(&r)
-                                },
-                                None => 0,
-                            }
-                        }
-                    }
+        Some(Literal::Op(op)) => match op {
+            Ops::Add => match &expr.left {
+                Some(l) => match &expr.right {
+                    Some(r) => traverse_expr_tree(&l) + traverse_expr_tree(&r),
+                    None => traverse_expr_tree(&l),
                 },
-                Ops::Subtract => {
-                    match &expr.left {
-                        Some(l) => {
-                            match &expr.right {
-                                Some(r) => {
-                                    traverse_expr_tree(&l) - traverse_expr_tree(&r)
-                                },
-                                None => -traverse_expr_tree(&l),
-                            }
-                        },
-                        None => {
-                            match &expr.right {
-                                Some(r) => {
-                                    -traverse_expr_tree(&r)
-                                },
-                                None => 0,
-                            }
-                        }
-                    }
-
+                None => match &expr.right {
+                    Some(r) => traverse_expr_tree(&r),
+                    None => 0,
                 },
-                Ops::Multiply => {
-                    match &expr.left {
-                        Some(l) => {
-                            match &expr.right {
-                                Some(r) => {
-                                    traverse_expr_tree(&l) * traverse_expr_tree(&r)
-                                },
-                                None => traverse_expr_tree(&l),
-                            }
-                        },
-                        None => {
-                            match &expr.right {
-                                Some(r) => {
-                                    traverse_expr_tree(&r)
-                                },
-                                None => 0,
-                            }
-                        }
-                    }
-
+            },
+            Ops::Subtract => match &expr.left {
+                Some(l) => match &expr.right {
+                    Some(r) => traverse_expr_tree(&l) - traverse_expr_tree(&r),
+                    None => -traverse_expr_tree(&l),
                 },
-                Ops::Divide => {
-                    match &expr.left {
-                        Some(l) => {
-                            match &expr.right {
-                                Some(r) => {
-                                    traverse_expr_tree(&l) / traverse_expr_tree(&r)
-                                },
-                                None => traverse_expr_tree(&l),
-                            }
-                        },
-                        None => {
-                            match &expr.right {
-                                Some(r) => {
-                                    traverse_expr_tree(&r)
-                                },
-                                None => 0,
-                            }
-                        }
-                    }
-
+                None => match &expr.right {
+                    Some(r) => -traverse_expr_tree(&r),
+                    None => 0,
                 },
-                Ops::Exponent => {
-                    match &expr.left {
-                        Some(l) => {
-                            match &expr.right {
-                                Some(r) => {
-                                    traverse_expr_tree(&l).pow(traverse_expr_tree(&r).try_into().unwrap())
-                                },
-                                None => traverse_expr_tree(&l),
-                            }
-                        },
-                        None => {
-                            match &expr.right {
-                                Some(r) => {
-                                    traverse_expr_tree(&r)
-                                },
-                                None => 0,
-                            }
-                        }
-                    }
-
+            },
+            Ops::Multiply => match &expr.left {
+                Some(l) => match &expr.right {
+                    Some(r) => traverse_expr_tree(&l) * traverse_expr_tree(&r),
+                    None => traverse_expr_tree(&l),
                 },
-            }
+                None => match &expr.right {
+                    Some(r) => traverse_expr_tree(&r),
+                    None => 0,
+                },
+            },
+            Ops::Divide => match &expr.left {
+                Some(l) => match &expr.right {
+                    Some(r) => traverse_expr_tree(&l) / traverse_expr_tree(&r),
+                    None => traverse_expr_tree(&l),
+                },
+                None => match &expr.right {
+                    Some(r) => traverse_expr_tree(&r),
+                    None => 0,
+                },
+            },
+            Ops::Exponent => match &expr.left {
+                Some(l) => match &expr.right {
+                    Some(r) => {
+                        traverse_expr_tree(&l).pow(traverse_expr_tree(&r).try_into().unwrap())
+                    }
+                    None => traverse_expr_tree(&l),
+                },
+                None => match &expr.right {
+                    Some(r) => traverse_expr_tree(&r),
+                    None => 0,
+                },
+            },
         },
-        None => 0
+        None => 0,
     }
 }
-fn print_tokens(tokens: &Result<Vec<Token>, &str>) {
-    match tokens {
-        Ok(vec_tokens) => {
-            for t in vec_tokens {
-                match t {
-                    Token::Operator(op) => {
-                        use Ops::*;
-                        match op {
-                            Divide => println!("Divide"),
-                            Add => println!("Add"),
-                            Subtract => println!("Subtract"),
-                            Exponent => println!("Exponent"),
-                            Multiply => println!("Multiply"),
-                        }
-                    }
-                    Token::Number(num) => println!("{num}"),
-                    Token::CloseParenth => println!("CloseParenth"),
-                    Token::OpenParenth => println!("OpenParenth"),
+fn print_tokens(tokens: &Vec<Token>) {
+    for t in tokens {
+        match t {
+            Token::Operator(op) => {
+                use Ops::*;
+                match op {
+                    Divide => println!("Divide"),
+                    Add => println!("Add"),
+                    Subtract => println!("Subtract"),
+                    Exponent => println!("Exponent"),
+                    Multiply => println!("Multiply"),
                 }
             }
+            Token::Number(num) => println!("{num}"),
+            Token::CloseParenth => println!("CloseParenth"),
+            Token::OpenParenth => println!("OpenParenth"),
         }
-        Err(_) => {}
     }
 }
 fn main() -> Result<(), &'static str> {
@@ -389,10 +359,26 @@ fn main() -> Result<(), &'static str> {
     }
     let args_vec = args.collect::<Vec<String>>();
     let tokens = math_lexer(String::from(&args_vec[1]))?;
+    //print_tokens(&tokens);
     let mut start = 0;
     let mut current = 0;
     let mut expr = Expr::new();
     math_parse(&tokens, &mut start, &mut current, &mut expr)?;
     println!("{}", traverse_expr_tree(&expr));
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn five_pow_five_times_four_minus_three() -> Result<(), &'static str> {
+        let tokens = math_lexer("5 ^ 5 * 4 - 3".to_string())?;
+        let mut start = 0;
+        let mut current = 0;
+        let mut expr = Expr::new();
+        math_parse(&tokens, &mut start, &mut current, &mut expr)?;
+        assert!(traverse_expr_tree(&expr) == 5i64.pow(5) * 4 - 3);
+        Ok(())
+    }
 }
