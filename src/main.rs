@@ -172,54 +172,65 @@ fn math_parse(
                                     // loop until we find the right place to put expr. Like
                                     // a BST (Binary Search Tree)
                                     let first_op_precedence = get_precedence(op);
-                                    let mut top_right = right_e.clone();
-                                    let mut current_expr = Box::new(right_e.clone());
-                                    let mut previous_expr = current_expr.clone();
-                                    loop {
-                                        match current_expr.lit {
-                                            Some(Literal::Op(ref current_op)) => {
-                                                let second_op_precedence =
-                                                    get_precedence(&current_op);
-                                                if first_op_precedence < second_op_precedence {
-                                                    expr.right =
-                                                        Some(Box::new(*current_expr.clone()));
-                                                    previous_expr.left =
-                                                        Some(Box::new(expr.clone()));
-                                                    *expr = top_right.clone();
-                                                    break;
-                                                } else if second_op_precedence
-                                                    <= first_op_precedence
-                                                {
-                                                    match current_expr.left {
-                                                        Some(ref e) => {
-                                                            previous_expr = current_expr.clone();
-                                                            current_expr = e.clone();
-                                                        }
-                                                        None => {
-                                                            expr.right = Some(Box::new(
-                                                                *current_expr.clone(),
-                                                            ));
-                                                            previous_expr.left =
-                                                                Some(Box::new(expr.clone()));
-                                                            *expr = top_right.clone();
+                                    let mut top_right = Box::new(right_e.clone());
+                                    match right_e.left {
+                                        Some(right_e_left) => {
+                                            let mut left_child = right_e_left.clone();
+                                            let mut current_expr = &mut top_right;
+                                            loop {
+                                                match current_expr.lit {
+                                                    Some(Literal::Op(ref current_op)) => {
+                                                        let second_op_precedence =
+                                                            get_precedence(&current_op);
+                                                        if first_op_precedence
+                                                            < second_op_precedence
+                                                        {
+                                                            expr.right = Some(current_expr.clone());
+                                                            *current_expr = Box::new(expr.clone());
+                                                            *expr = *top_right.clone();
                                                             break;
+                                                        } else if second_op_precedence
+                                                            <= first_op_precedence
+                                                        {
+                                                            match left_child.left {
+                                                                Some(ref e) => {
+                                                                    match current_expr.left {
+                                                                        Some(ref mut left) => {
+                                                                            current_expr = left;
+                                                                        }
+                                                                        None => {
+                                                                            unreachable!();
+                                                                        }
+                                                                    }
+                                                                    left_child = e.clone();
+                                                                }
+                                                                None => {
+                                                                    expr.right = Some(left_child.clone());
+                                                                    current_expr.left = Some(Box::new(expr.clone()));
+                                                                    *expr = *top_right.clone();
+                                                                    break;
+                                                                }
+                                                            }
                                                         }
+                                                    }
+                                                    Some(Literal::Number(current_num)) => {
+                                                        expr.right = Some(Box::new(Expr {
+                                                            lit: Some(Literal::Number(current_num)),
+                                                            left: None,
+                                                            right: None
+                                                        }));
+                                                        *current_expr = Box::new(expr.clone());
+                                                        *expr = *top_right.clone();
+                                                        break;
+                                                    }
+                                                    None => {
+                                                        unreachable!()
                                                     }
                                                 }
                                             }
-                                            Some(Literal::Number(current_num)) => {
-                                                expr.right = Some(Box::new(Expr {
-                                                    lit: Some(Literal::Number(current_num)),
-                                                    left: None,
-                                                    right: None,
-                                                }));
-                                                previous_expr.left = Some(Box::new(expr.clone()));
-                                                *expr = top_right.clone();
-                                                break;
-                                            }
-                                            None => {
-                                                unreachable!()
-                                            }
+                                        }
+                                        None => {
+                                            return Err("operator with no left operand.");
                                         }
                                     }
                                 }
@@ -253,9 +264,7 @@ fn math_parse(
 }
 fn traverse_expr_tree(expr: &Expr) -> i64 {
     match &expr.lit {
-        Some(Literal::Number(num)) => {
-            *num
-        },
+        Some(Literal::Number(num)) => *num,
         Some(Literal::Op(op)) => match op {
             Ops::Add => match &expr.left {
                 Some(l) => match &expr.right {
