@@ -143,6 +143,7 @@ fn math_parse(
             let mut local_e = Expr::new();
             math_parse(tokens, start, current + 1, &mut local_e)?;
             *expr = local_e.clone();
+
         }
         Token::Number(num) => {
             expr.lit = Some(Literal::Number(*num));
@@ -252,6 +253,7 @@ fn math_parse(
                         }
                     }
                 }
+                Token::CloseParenth => {}
                 _ => {
                     return Err("expected operator.");
                 }
@@ -262,7 +264,6 @@ fn math_parse(
                 Token::OpenParenth => {},
                 _ => return Err("Unexpected ')'")
             }
-
         }
         Token::Operator(_) => {
             return Err("Expected left operand.");
@@ -406,6 +407,14 @@ mod tests {
         let mut expr = Expr::new();
         math_parse(&tokens, 0, 0, &mut expr)?;
         assert!(traverse_expr_tree(&expr) == 4 - 4 * 3);
+        Ok(())
+    }
+    #[test]
+    fn three_divide_three() -> Result<(), &'static str> {
+        let tokens = math_lexer(&"3 / 3".to_string())?;
+        let mut expr = Expr::new();
+        math_parse(&tokens, 0, 0, &mut expr)?;
+        assert!(traverse_expr_tree(&expr) == 3 / 3);
         Ok(())
     }
 }
