@@ -1,4 +1,4 @@
-use std::env;
+use std::io::{self, Write};
 enum Ops {
     Add,
     Multiply,
@@ -64,7 +64,7 @@ impl Clone for Ops {
         }
     }
 }
-fn math_lexer(math_expr: String) -> Result<Vec<Token>, &'static str> {
+fn math_lexer(math_expr: &String) -> Result<Vec<Token>, &'static str> {
     let math_expr_bytes = math_expr.as_bytes();
     let mut tokens = Vec::new();
     let mut token = String::new();
@@ -139,9 +139,10 @@ fn math_parse(
     }
     match &tokens[current] {
         Token::OpenParenth => {
+            start = current;
             let mut local_e = Expr::new();
             math_parse(tokens, start, current + 1, &mut local_e)?;
-            todo!("need to implement");
+            *expr = local_e.clone();
         }
         Token::Number(num) => {
             expr.lit = Some(Literal::Number(*num));
@@ -205,8 +206,11 @@ fn math_parse(
                                                                     left_child = e.clone();
                                                                 }
                                                                 None => {
-                                                                    expr.right = Some(left_child.clone());
-                                                                    current_expr.left = Some(Box::new(expr.clone()));
+                                                                    expr.right =
+                                                                        Some(left_child.clone());
+                                                                    current_expr.left = Some(
+                                                                        Box::new(expr.clone()),
+                                                                    );
                                                                     *expr = *top_right.clone();
                                                                     break;
                                                                 }
@@ -217,7 +221,7 @@ fn math_parse(
                                                         expr.right = Some(Box::new(Expr {
                                                             lit: Some(Literal::Number(current_num)),
                                                             left: None,
-                                                            right: None
+                                                            right: None,
                                                         }));
                                                         *current_expr = Box::new(expr.clone());
                                                         *expr = *top_right.clone();
@@ -254,7 +258,11 @@ fn math_parse(
             }
         }
         Token::CloseParenth => {
-            todo!("WE NEED TO RECURSE PAST THE CLOSE PARENTH");
+            match &tokens[start] {
+                Token::OpenParenth => {},
+                _ => return Err("Unexpected ')'")
+            }
+
         }
         Token::Operator(_) => {
             return Err("Expected left operand.");
@@ -342,16 +350,26 @@ fn print_tokens(tokens: &Vec<Token>) {
     }
 }
 fn main() -> Result<(), &'static str> {
-    let args = env::args();
-    if args.len() != 2 {
-        return Err("Please offer only one CLI argument which should be a math expression");
+    let mut expr_str = String::new();
+    loop {
+        print!("\r>");
+        match io::stdout().flush() {
+            Ok(_) => {}
+            Err(_) => break
+        }
+        match io::stdin().read_line(&mut expr_str) {
+            Ok(_) => {
+                let trimmed = expr_str.trim().to_string();
+                println!("Calculating: {}", trimmed);
+                let tokens = math_lexer(&trimmed)?;
+                let mut expr = Expr::new();
+                math_parse(&tokens, 0, 0, &mut expr)?;
+                println!("{}", traverse_expr_tree(&expr));
+                expr_str.clear();
+            }
+            Err(_) => break
+        }
     }
-    let args_vec = args.collect::<Vec<String>>();
-    let tokens = math_lexer(String::from(&args_vec[1]))?;
-    //print_tokens(&tokens);
-    let mut expr = Expr::new();
-    math_parse(&tokens, 0, 0, &mut expr)?;
-    println!("{}", traverse_expr_tree(&expr));
     Ok(())
 }
 
@@ -360,7 +378,7 @@ mod tests {
     use super::*;
     #[test]
     fn five_pow_five_times_four_minus_three() -> Result<(), &'static str> {
-        let tokens = math_lexer("5 ^ 5 * 4 - 3".to_string())?;
+        let tokens = math_lexer(&"5 ^ 5 * 4 - 3".to_string())?;
         let mut expr = Expr::new();
         math_parse(&tokens, 0, 0, &mut expr)?;
         assert!(traverse_expr_tree(&expr) == 5i64.pow(5) * 4 - 3);
@@ -368,10 +386,26 @@ mod tests {
     }
     #[test]
     fn four_plus_four() -> Result<(), &'static str> {
-        let tokens = math_lexer("4 + 4".to_string())?;
+        let tokens = math_lexer(&"4 + 4".to_string())?;
         let mut expr = Expr::new();
         math_parse(&tokens, 0, 0, &mut expr)?;
         assert!(traverse_expr_tree(&expr) == 4 + 4);
+        Ok(())
+    }
+    #[test]
+    fn five_times_four_minus_three() -> Result<(), &'static str> {
+        let tokens = math_lexer(&"5 * 4 - 3".to_string())?;
+        let mut expr = Expr::new();
+        math_parse(&tokens, 0, 0, &mut expr)?;
+        assert!(traverse_expr_tree(&expr) == 5 * 4 - 3);
+        Ok(())
+    }
+    #[test]
+    fn four_minus_four_times_three() -> Result<(), &'static str> {
+        let tokens = math_lexer(&"4 - 4 * 3".to_string())?;
+        let mut expr = Expr::new();
+        math_parse(&tokens, 0, 0, &mut expr)?;
+        assert!(traverse_expr_tree(&expr) == 4 - 4 * 3);
         Ok(())
     }
 }
