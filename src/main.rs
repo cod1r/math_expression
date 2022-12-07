@@ -130,97 +130,111 @@ fn get_precedence(op: &Ops) -> u8 {
  * OPERATOR -> * | - | ^ | /  */
 fn math_parse(
     tokens: &Vec<Token>,
-    start: &mut usize,
-    current: &mut usize,
+    mut start: usize,
+    mut current: usize,
     expr: &mut Expr,
 ) -> Result<(), &'static str> {
-    if *current >= tokens.len() {
+    if current >= tokens.len() {
         return Ok(());
     }
-    match &tokens[*current] {
+    match &tokens[current] {
         Token::OpenParenth => {
-            *current += 1;
-            *start = *current;
             let mut local_e = Expr::new();
-            math_parse(tokens, start, current, &mut local_e)?;
-            *expr = local_e.clone();
-            if *current >= tokens.len() {
-                return Err("Unclosed opening parenthesis");
-            }
-            match &tokens[*current] {
-                Token::CloseParenth => {}
-                _ => return Err("Unclosed opening parenthesis"),
-            }
+            math_parse(tokens, start, current + 1, &mut local_e)?;
+            todo!("need to implement");
         }
         Token::Number(num) => {
             expr.lit = Some(Literal::Number(*num));
-            *current += 1;
-            if *current >= tokens.len() {
+            current += 1;
+            if current >= tokens.len() {
                 return Ok(());
             }
-            match &tokens[*current] {
+            match &tokens[current] {
                 Token::Operator(op) => {
-                    *current += 1;
-                    if *current >= tokens.len() {
-                        return Err("Expected Open Parenthesis or Number.");
-                    }
                     *expr = Expr {
                         lit: Some(Literal::Op(op.clone())),
                         left: Some(Box::new(expr.clone())),
                         right: None,
                     };
-                    match &tokens[*current] {
-                        Token::Number(right_num) => {
-                            *current += 1;
-                            let mut right_e = Expr::new();
-                            math_parse(tokens, start, current, &mut right_e)?;
+                    let mut right_e = Expr::new();
+                    math_parse(tokens, start, current + 1, &mut right_e)?;
+                    current += 1;
+                    if current >= tokens.len() {
+                        return Err("expected right operand.");
+                    }
+                    match &tokens[current] {
+                        Token::OpenParenth => {
+                            todo!("need to implement open parenth for right operand");
+                        }
+                        _ => {
                             match right_e.lit {
-                                Some(Literal::Op(ref right_op)) => {
+                                Some(Literal::Op(_)) => {
+                                    // loop until we find the right place to put expr. Like
+                                    // a BST (Binary Search Tree)
                                     let first_op_precedence = get_precedence(op);
-                                    let second_op_precedence = get_precedence(right_op);
-                                    if first_op_precedence < second_op_precedence {
-                                        right_e.left = Some(Box::new(Expr {
-                                            lit: Some(Literal::Number(*right_num)),
-                                            left: None,
-                                            right: None,
-                                        }));
-                                        expr.right = Some(Box::new(right_e.clone()));
-                                    } else if second_op_precedence <= first_op_precedence {
-                                        expr.right = Some(Box::new(Expr {
-                                            lit: Some(Literal::Number(*right_num)),
-                                            left: None,
-                                            right: None,
-                                        }));
-                                        right_e.left = Some(Box::new(expr.clone()));
-                                        *expr = right_e.clone();
+                                    let mut top_right = right_e.clone();
+                                    let mut current_expr = Box::new(right_e.clone());
+                                    let mut previous_expr = current_expr.clone();
+                                    loop {
+                                        match current_expr.lit {
+                                            Some(Literal::Op(ref current_op)) => {
+                                                let second_op_precedence =
+                                                    get_precedence(&current_op);
+                                                if first_op_precedence < second_op_precedence {
+                                                    expr.right =
+                                                        Some(Box::new(*current_expr.clone()));
+                                                    previous_expr.left =
+                                                        Some(Box::new(expr.clone()));
+                                                    *expr = top_right.clone();
+                                                    break;
+                                                } else if second_op_precedence
+                                                    <= first_op_precedence
+                                                {
+                                                    match current_expr.left {
+                                                        Some(ref e) => {
+                                                            previous_expr = current_expr.clone();
+                                                            current_expr = e.clone();
+                                                        }
+                                                        None => {
+                                                            expr.right = Some(Box::new(
+                                                                *current_expr.clone(),
+                                                            ));
+                                                            previous_expr.left =
+                                                                Some(Box::new(expr.clone()));
+                                                            *expr = top_right.clone();
+                                                            break;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            Some(Literal::Number(current_num)) => {
+                                                expr.right = Some(Box::new(Expr {
+                                                    lit: Some(Literal::Number(current_num)),
+                                                    left: None,
+                                                    right: None,
+                                                }));
+                                                previous_expr.left = Some(Box::new(expr.clone()));
+                                                *expr = top_right.clone();
+                                                break;
+                                            }
+                                            None => {
+                                                unreachable!()
+                                            }
+                                        }
                                     }
                                 }
-                                None => {
+                                Some(Literal::Number(right_num)) => {
                                     expr.right = Some(Box::new(Expr {
-                                        lit: Some(Literal::Number(*right_num)),
+                                        lit: Some(Literal::Number(right_num)),
                                         left: None,
                                         right: None,
                                     }));
                                 }
                                 _ => {
-                                    return Err("expected operator after number.");
+                                    return Err("expected right operand.");
                                 }
                             }
                         }
-                        Token::OpenParenth => {
-                            *current += 1;
-                            let mut right_e = Expr::new();
-                            math_parse(tokens, start, current, &mut right_e)?;
-                            match right_e.lit {
-                                Some(_) => {
-                                    expr.right = Some(Box::new(right_e.clone()));
-                                }
-                                _ => {
-                                    return Err("Expected closing parenth or something.");
-                                }
-                            }
-                        }
-                        _ => println!("Expected Open Parenthesis or Number."),
                     }
                 }
                 _ => {
@@ -231,51 +245,17 @@ fn math_parse(
         Token::CloseParenth => {
             todo!("WE NEED TO RECURSE PAST THE CLOSE PARENTH");
         }
-        Token::Operator(op) => {
-            todo!("WE NEED TO CHECK HOW WE DO THE TREE BUILDING CORRECTLY");
-            match &tokens[*start] {
-                Token::Number(_) => {}
-                _ => return Err("operator with no operands?"),
-            }
-            *current += 1;
-            let mut right_e = Expr::new();
-            math_parse(tokens, start, current, &mut right_e)?;
-            expr.lit = Some(Literal::Op(op.clone()));
-            match right_e.lit {
-                Some(Literal::Op(ref right_op)) => {
-                    let first_op_precedence = get_precedence(op);
-                    let second_op_precedence = get_precedence(right_op);
-                    if first_op_precedence < second_op_precedence {
-                        *expr = Expr {
-                            lit: Some(Literal::Op(op.clone())),
-                            left: None,
-                            right: Some(Box::new(right_e.clone())),
-                        };
-                    } else if second_op_precedence <= first_op_precedence {
-                        right_e.left = Some(Box::new(expr.clone()));
-                        *expr = right_e.clone();
-                    }
-                }
-                Some(Literal::Number(num)) => {
-                    *expr = Expr {
-                        lit: Some(Literal::Op(op.clone())),
-                        left: None,
-                        right: Some(Box::new(Expr {
-                            lit: Some(Literal::Number(num)),
-                            left: None,
-                            right: None,
-                        }))
-                    };
-                }
-                None => return Err("expected right operand.")
-            }
+        Token::Operator(_) => {
+            return Err("Expected left operand.");
         }
     }
     Ok(())
 }
 fn traverse_expr_tree(expr: &Expr) -> i64 {
     match &expr.lit {
-        Some(Literal::Number(num)) => *num,
+        Some(Literal::Number(num)) => {
+            *num
+        },
         Some(Literal::Op(op)) => match op {
             Ops::Add => match &expr.left {
                 Some(l) => match &expr.right {
@@ -360,10 +340,8 @@ fn main() -> Result<(), &'static str> {
     let args_vec = args.collect::<Vec<String>>();
     let tokens = math_lexer(String::from(&args_vec[1]))?;
     //print_tokens(&tokens);
-    let mut start = 0;
-    let mut current = 0;
     let mut expr = Expr::new();
-    math_parse(&tokens, &mut start, &mut current, &mut expr)?;
+    math_parse(&tokens, 0, 0, &mut expr)?;
     println!("{}", traverse_expr_tree(&expr));
     Ok(())
 }
@@ -374,11 +352,17 @@ mod tests {
     #[test]
     fn five_pow_five_times_four_minus_three() -> Result<(), &'static str> {
         let tokens = math_lexer("5 ^ 5 * 4 - 3".to_string())?;
-        let mut start = 0;
-        let mut current = 0;
         let mut expr = Expr::new();
-        math_parse(&tokens, &mut start, &mut current, &mut expr)?;
+        math_parse(&tokens, 0, 0, &mut expr)?;
         assert!(traverse_expr_tree(&expr) == 5i64.pow(5) * 4 - 3);
+        Ok(())
+    }
+    #[test]
+    fn four_plus_four() -> Result<(), &'static str> {
+        let tokens = math_lexer("4 + 4".to_string())?;
+        let mut expr = Expr::new();
+        math_parse(&tokens, 0, 0, &mut expr)?;
+        assert!(traverse_expr_tree(&expr) == 4 + 4);
         Ok(())
     }
 }
