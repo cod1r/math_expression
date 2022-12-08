@@ -75,12 +75,12 @@ fn math_lexer(math_expr: &String) -> Result<Vec<Token>, &'static str> {
     loop {
         if idx >= math_expr_bytes.len() {
             break;
-        } else if token.len() == 0 && math_expr_bytes[idx] == '0' as u8 {
+        } else if token.is_empty() && math_expr_bytes[idx] == b'0' {
             return Err("cannot have leading zeroes for numbers");
-        } else if math_expr_bytes[idx] >= '0' as u8 && math_expr_bytes[idx] <= '9' as u8 {
+        } else if math_expr_bytes[idx] >= b'0' && math_expr_bytes[idx] <= b'9' {
             while idx < math_expr_bytes.len()
-                && math_expr_bytes[idx] >= '0' as u8
-                && math_expr_bytes[idx] <= '9' as u8
+                && math_expr_bytes[idx] >= b'0'
+                && math_expr_bytes[idx] <= b'9'
             {
                 token += &(math_expr_bytes[idx] as char).to_string();
                 idx += 1;
@@ -90,15 +90,15 @@ fn math_lexer(math_expr: &String) -> Result<Vec<Token>, &'static str> {
             ));
             token.clear();
             continue;
-        } else if math_expr_bytes[idx] == '(' as u8 {
+        } else if math_expr_bytes[idx] == b'(' {
             tokens.push(Token::OpenParenth);
-        } else if math_expr_bytes[idx] == ')' as u8 {
+        } else if math_expr_bytes[idx] == b')' {
             tokens.push(Token::CloseParenth);
-        } else if math_expr_bytes[idx] == '*' as u8
-            || math_expr_bytes[idx] == '/' as u8
-            || math_expr_bytes[idx] == '^' as u8
-            || math_expr_bytes[idx] == '+' as u8
-            || math_expr_bytes[idx] == '-' as u8
+        } else if math_expr_bytes[idx] == b'*'
+            || math_expr_bytes[idx] == b'/'
+            || math_expr_bytes[idx] == b'^'
+            || math_expr_bytes[idx] == b'+'
+            || math_expr_bytes[idx] == b'-'
         {
             let c = math_expr_bytes[idx] as char;
             if c == '*' {
@@ -112,7 +112,7 @@ fn math_lexer(math_expr: &String) -> Result<Vec<Token>, &'static str> {
             } else if c == '-' {
                 tokens.push(Token::Operator(Ops::Subtract));
             }
-        } else if math_expr_bytes[idx] != ' ' as u8 {
+        } else if math_expr_bytes[idx] != b' ' {
             return Err("Unknown token");
         }
         idx += 1;
@@ -231,7 +231,7 @@ fn math_parse(
                         parentheses.push(&tokens[current]);
                     }
                     Token::CloseParenth => {
-                        if parentheses.len() > 0 {
+                        if !parentheses.is_empty() {
                             parentheses.pop();
                         } else {
                             return Err("Unexpected close parenthesis.");
@@ -239,11 +239,11 @@ fn math_parse(
                     }
                 }
                 current += 1;
-                if parentheses.len() == 0 {
+                if parentheses.is_empty() {
                     break;
                 }
             }
-            if parentheses.len() > 0 {
+            if !parentheses.is_empty() {
                 return Err("Expected ')'");
             }
             if current >= tokens.len() {
@@ -331,53 +331,53 @@ fn traverse_expr_tree(expr: &Expr) -> i64 {
         Some(Literal::Op(op)) => match op {
             Ops::Add => match &expr.left {
                 Some(l) => match &expr.right {
-                    Some(r) => traverse_expr_tree(&l) + traverse_expr_tree(&r),
-                    None => traverse_expr_tree(&l),
+                    Some(r) => traverse_expr_tree(l) + traverse_expr_tree(r),
+                    None => traverse_expr_tree(l),
                 },
                 None => match &expr.right {
-                    Some(r) => traverse_expr_tree(&r),
+                    Some(r) => traverse_expr_tree(r),
                     None => 0,
                 },
             },
             Ops::Subtract => match &expr.left {
                 Some(l) => match &expr.right {
-                    Some(r) => traverse_expr_tree(&l) - traverse_expr_tree(&r),
-                    None => -traverse_expr_tree(&l),
+                    Some(r) => traverse_expr_tree(l) - traverse_expr_tree(r),
+                    None => -traverse_expr_tree(l),
                 },
                 None => match &expr.right {
-                    Some(r) => -traverse_expr_tree(&r),
+                    Some(r) => -traverse_expr_tree(r),
                     None => 0,
                 },
             },
             Ops::Multiply => match &expr.left {
                 Some(l) => match &expr.right {
-                    Some(r) => traverse_expr_tree(&l) * traverse_expr_tree(&r),
-                    None => traverse_expr_tree(&l),
+                    Some(r) => traverse_expr_tree(l) * traverse_expr_tree(r),
+                    None => traverse_expr_tree(l),
                 },
                 None => match &expr.right {
-                    Some(r) => traverse_expr_tree(&r),
+                    Some(r) => traverse_expr_tree(r),
                     None => 0,
                 },
             },
             Ops::Divide => match &expr.left {
                 Some(l) => match &expr.right {
-                    Some(r) => traverse_expr_tree(&l) / traverse_expr_tree(&r),
-                    None => traverse_expr_tree(&l),
+                    Some(r) => traverse_expr_tree(l) / traverse_expr_tree(r),
+                    None => traverse_expr_tree(l),
                 },
                 None => match &expr.right {
-                    Some(r) => traverse_expr_tree(&r),
+                    Some(r) => traverse_expr_tree(r),
                     None => 0,
                 },
             },
             Ops::Exponent => match &expr.left {
                 Some(l) => match &expr.right {
                     Some(r) => {
-                        traverse_expr_tree(&l).pow(traverse_expr_tree(&r).try_into().unwrap())
+                        traverse_expr_tree(l).pow(traverse_expr_tree(r).try_into().unwrap())
                     }
-                    None => traverse_expr_tree(&l),
+                    None => traverse_expr_tree(l),
                 },
                 None => match &expr.right {
-                    Some(r) => traverse_expr_tree(&r),
+                    Some(r) => traverse_expr_tree(r),
                     None => 0,
                 },
             },
