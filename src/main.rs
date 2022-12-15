@@ -371,9 +371,7 @@ fn traverse_expr_tree(expr: &Expr) -> i64 {
             },
             Ops::Exponent => match &expr.left {
                 Some(l) => match &expr.right {
-                    Some(r) => {
-                        traverse_expr_tree(l).pow(traverse_expr_tree(r).try_into().unwrap())
-                    }
+                    Some(r) => traverse_expr_tree(l).pow(traverse_expr_tree(r).try_into().unwrap()),
                     None => traverse_expr_tree(l),
                 },
                 None => match &expr.right {
@@ -406,10 +404,10 @@ fn main() -> Result<(), &'static str> {
                             Ok(_) => println!("{}", traverse_expr_tree(&expr)),
                             Err(s) => println!("{}", s),
                         }
-                        expr_str.clear();
                     }
                     Err(s) => println!("{}", s),
                 }
+                expr_str.clear();
             }
             Err(_) => break,
         }
@@ -535,6 +533,15 @@ mod tests {
         match res {
             Err(_) => {}
             Ok(_) => return Err("Unmatched parentheses was not caught"),
+        }
+        Ok(())
+    }
+    #[test]
+    fn unknown_token() -> Result<(), &'static str> {
+        let tokens = math_lexer(&"1 _ 1".to_string());
+        match tokens {
+            Err(_) => {}
+            Ok(_) => return Err("Unknown token wasn't caught"),
         }
         Ok(())
     }
