@@ -75,8 +75,6 @@ fn math_lexer(math_expr: &String) -> Result<Vec<Token>, &'static str> {
     loop {
         if idx >= math_expr_bytes.len() {
             break;
-        } else if token.is_empty() && math_expr_bytes[idx] == b'0' {
-            return Err("cannot have leading zeroes for numbers");
         } else if math_expr_bytes[idx] >= b'0' && math_expr_bytes[idx] <= b'9' {
             while idx < math_expr_bytes.len()
                 && math_expr_bytes[idx] >= b'0'
@@ -88,6 +86,9 @@ fn math_lexer(math_expr: &String) -> Result<Vec<Token>, &'static str> {
             tokens.push(Token::Number(
                 token.parse::<i64>().expect("a number that fits with i64"),
             ));
+            if token.len() > 0 && token.as_bytes()[0] == b'0' {
+                return Err("numbers cannot have leading zeroes");
+            }
             token.clear();
             continue;
         } else if math_expr_bytes[idx] == b'(' {
@@ -173,12 +174,11 @@ fn reconcile_trees(left: &mut Expr, right: &mut Expr) {
                     break;
                 } else if second_op_precedence <= first_op_precedence {
                     match current_expr.left {
-                        Some(ref mut left) => {
-                            current_expr = left;
+                        Some(ref mut left_e) => {
+                            current_expr = left_e;
                         }
                         None => {
-                            left.right = current_expr.left.clone();
-                            *current_expr = Box::new(left.clone());
+                            current_expr.left = Some(Box::new(left.clone()));
                             *left = *top_right.clone();
                             break;
                         }
@@ -203,11 +203,21 @@ fn reconcile_trees(left: &mut Expr, right: &mut Expr) {
     }
 }
 /*
+ * OLD
    New grammar:
    uses Augmented Backus Naur Form
    EXPR -> NUMBER OPERATOR EXPR | OPENPARENTH EXPR CLOSEPARENTH *(OPERATOR EXPR) | NUMBER
    OPERATOR -> + | - | * | / | ^
    NUMBER -> INTEGER THAT CAN FIT INTO i64
+   THIS GRAMMAR IS BAD BC IT NEVER CONSIDERED SIGNED NUMBERS (EX: -1 or +1)
+*/
+
+/*
+  New new grammer:
+   expr1 -> number (op expr1)* | open_parenth expr1 close_parenth *(expr1) | expr2
+   expr2 -> (unary_op number)* | number
+   op -> unary_op | * | / | ^
+   unary_op -> - | +
 */
 fn math_parse(
     tokens: &Vec<Token>,
@@ -319,8 +329,46 @@ fn math_parse(
             }
         }
         Token::CloseParenth => return Err("Unexpected ')'"),
-        Token::Operator(_) => {
-            return Err("Expected left operand.");
+        Token::Operator(op) => {
+            expr.lit = Some(Literal::Op(op.clone()));
+            current += 1;
+            if current >= tokens.len() {
+                return Err("expected right operand.");
+            }
+            match &tokens[current] {
+                Token::Number(num) => {
+                    match &op {
+                        Ops::Multiply | Ops::Divide | Ops::Exponent => {
+                            return Err("Expected `-` or `+`");
+                        }
+                        _ => {}
+                    }
+                    expr.right = Some(Box::new(Expr {
+                        lit: Some(Literal::Number(*num)),
+                        left: None,
+                        right: None,
+                        precedence: 0,
+                    }));
+                    expr.precedence = 4;
+                    current += 1;
+                    if current < tokens.len() {
+                        match &tokens[current] {
+                            Token::Operator(_) => {
+                                let mut right_e = Expr::new();
+                                math_parse(tokens, start, current, &mut right_e)?;
+                                reconcile_trees(expr, &mut right_e);
+                            }
+                            _ => return Err("Expected operator."),
+                        }
+                    }
+                }
+                _ => {
+                    let mut right_e = Expr::new();
+                    math_parse(tokens, start, current, &mut right_e)?;
+                    expr.right = Some(Box::new(right_e.clone()));
+                    expr.precedence = 4;
+                }
+            }
         }
     }
     Ok(())
@@ -543,6 +591,74 @@ mod tests {
             Err(_) => {}
             Ok(_) => return Err("Unknown token wasn't caught"),
         }
+        Ok(())
+    }
+    #[test]
+    fn leading_zeroes() -> Result<(), &'static str> {
+        let tokens = math_lexer(&"01 + 1".to_string());
+        match tokens {
+            Err(_) => {}
+            Ok(_) => return Err("leading zero wasn't caught"),
+        }
+        Ok(())
+    }
+    #[test]
+    fn neg_one_minus_one() -> Result<(), &'static str> {
+        let tokens = math_lexer(&"-1-1".to_string())?;
+        let mut expr = Expr::new();
+        math_parse(&tokens, 0, 0, &mut expr)?;
+        assert!(traverse_expr_tree(&expr) == -1 - 1);
+        Ok(())
+    }
+    #[test]
+    fn one_minus_neg_one() -> Result<(), &'static str> {
+        let tokens = math_lexer(&"1--1".to_string())?;
+        let mut expr = Expr::new();
+        math_parse(&tokens, 0, 0, &mut expr)?;
+        assert!(traverse_expr_tree(&expr) == 1 - -1);
+        Ok(())
+    }
+    #[test]
+    fn incorrect_unary_op() -> Result<(), &'static str> {
+        let tokens = math_lexer(&"1-*1".to_string())?;
+        let mut expr = Expr::new();
+        let res = math_parse(&tokens, 0, 0, &mut expr);
+        match res {
+            Err(_) => {}
+            Ok(_) => return Err("incorrect unary op was not caught"),
+        }
+        Ok(())
+    }
+    #[test]
+    fn one_times_neg_neg_one() -> Result<(), &'static str> {
+        let tokens = math_lexer(&"1*--1".to_string())?;
+        let mut expr = Expr::new();
+        math_parse(&tokens, 0, 0, &mut expr)?;
+        assert!(traverse_expr_tree(&expr) == 1 * --1);
+        Ok(())
+    }
+    #[test]
+    fn five_times_neg_one_times_p_one_plus_four_p() -> Result<(), &'static str> {
+        let tokens = math_lexer(&"5 * -1 * (1 + 4)".to_string())?;
+        let mut expr = Expr::new();
+        math_parse(&tokens, 0, 0, &mut expr)?;
+        assert!(traverse_expr_tree(&expr) == 5 * -1 * (1 + 4));
+        Ok(())
+    }
+    #[test]
+    fn one_times_neg_neg_neg_neg_neg_one() -> Result<(), &'static str> {
+        let tokens = math_lexer(&"1 * -----1".to_string())?;
+        let mut expr = Expr::new();
+        math_parse(&tokens, 0, 0, &mut expr)?;
+        assert!(traverse_expr_tree(&expr) == 1 * -----1);
+        Ok(())
+    }
+    #[test]
+    fn one_times_pos_one() -> Result<(), &'static str> {
+        let tokens = math_lexer(&"1 * +1".to_string())?;
+        let mut expr = Expr::new();
+        math_parse(&tokens, 0, 0, &mut expr)?;
+        assert!(traverse_expr_tree(&expr) == 1 * (0+1));
         Ok(())
     }
 }
