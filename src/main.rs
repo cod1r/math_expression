@@ -350,12 +350,6 @@ fn math_parse(
             }
             match &tokens[current] {
                 Token::Number(num) => {
-                    match &op {
-                        Ops::Multiply | Ops::Divide | Ops::Exponent => {
-                            return Err("Expected `-` or `+`");
-                        }
-                        _ => {}
-                    }
                     expr.right = Some(Box::new(Expr {
                         lit: Some(Literal::Number(*num)),
                         left: None,
@@ -378,6 +372,15 @@ fn math_parse(
                     }
                 }
                 _ => {
+                    match &tokens[current] {
+                        Token::Operator(right_op) => match right_op {
+                            Ops::Multiply | Ops::Divide => {
+                                return Err("Multiplication or Division is not a unary operator.")
+                            }
+                            _ => {}
+                        },
+                        _ => {}
+                    }
                     let mut right_e = Expr::new();
                     math_parse(tokens, start, current, &mut right_e)?;
                     expr.right = Some(Box::new(right_e.clone()));
