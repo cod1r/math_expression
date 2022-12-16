@@ -1,4 +1,8 @@
-use std::{io::{self, Write}, convert::TryInto};
+use std::{
+    convert::TryInto,
+    io::{self, Write},
+};
+const TOP_PREC: u8 = 4;
 enum Ops {
     Add,
     Multiply,
@@ -156,6 +160,14 @@ fn get_precedence(op: &Ops) -> u8 {
        // define unary_ and binary_operator as necessary
 
 
+ * OLD
+   New grammar:
+   uses Augmented Backus Naur Form
+   EXPR -> NUMBER OPERATOR EXPR | OPENPARENTH EXPR CLOSEPARENTH *(OPERATOR EXPR) | NUMBER
+   OPERATOR -> + | - | * | / | ^
+   NUMBER -> INTEGER THAT CAN FIT INTO i64
+   THIS GRAMMAR IS BAD BC IT NEVER CONSIDERED SIGNED NUMBERS (EX: -1 or +1)
+
 **/
 fn reconcile_trees(left: &mut Expr, right: &mut Expr) {
     // loop until we find the right place to put expr. Like
@@ -203,16 +215,6 @@ fn reconcile_trees(left: &mut Expr, right: &mut Expr) {
     }
 }
 /*
- * OLD
-   New grammar:
-   uses Augmented Backus Naur Form
-   EXPR -> NUMBER OPERATOR EXPR | OPENPARENTH EXPR CLOSEPARENTH *(OPERATOR EXPR) | NUMBER
-   OPERATOR -> + | - | * | / | ^
-   NUMBER -> INTEGER THAT CAN FIT INTO i64
-   THIS GRAMMAR IS BAD BC IT NEVER CONSIDERED SIGNED NUMBERS (EX: -1 or +1)
-*/
-
-/*
   New new grammer:
    expr1 -> number (op expr1)* | open_parenth expr1 close_parenth *(expr1) | expr2
    expr2 -> (unary_op number)* | number
@@ -257,7 +259,7 @@ fn math_parse(
                 return Err("Expected ')'");
             }
             if current >= tokens.len() {
-                expr.precedence = 4;
+                expr.precedence = TOP_PREC;
                 return Ok(());
             }
             match &tokens[current] {
@@ -283,7 +285,7 @@ fn math_parse(
                 }
                 _ => return Err("expected operator."),
             }
-            expr.precedence = 4;
+            expr.precedence = TOP_PREC;
         }
         Token::Number(num) => {
             expr.lit = Some(Literal::Number(*num));
@@ -305,13 +307,24 @@ fn math_parse(
                     }
                     let mut right_e = Expr::new();
                     math_parse(tokens, start, current, &mut right_e)?;
-                    match right_e.lit {
-                        Some(Literal::Op(_)) => {
+                    match &right_e.lit {
+                        Some(Literal::Op(right_op)) => {
+                            match right_op {
+                                Ops::Multiply | Ops::Divide => {
+                                    match right_e.left {
+                                        Some(_) => {}
+                                        None => return Err(
+                                            "Multiplication or Division is not a unary operator.",
+                                        ),
+                                    }
+                                }
+                                _ => {}
+                            }
                             reconcile_trees(expr, &mut right_e);
                         }
                         Some(Literal::Number(right_num)) => {
                             expr.right = Some(Box::new(Expr {
-                                lit: Some(Literal::Number(right_num)),
+                                lit: Some(Literal::Number(*right_num)),
                                 left: None,
                                 right: None,
                                 precedence: 0,
@@ -349,15 +362,17 @@ fn math_parse(
                         right: None,
                         precedence: 0,
                     }));
-                    expr.precedence = 4;
+                    expr.precedence = TOP_PREC;
                     current += 1;
                     if current < tokens.len() {
                         match &tokens[current] {
                             Token::Operator(_) => {
                                 let mut right_e = Expr::new();
                                 math_parse(tokens, start, current, &mut right_e)?;
-                                reconcile_trees(expr, &mut right_e);
+                                right_e.left = Some(Box::new(expr.clone()));
+                                *expr = right_e.clone();
                             }
+                            Token::CloseParenth => {}
                             _ => return Err("Expected operator."),
                         }
                     }
@@ -366,7 +381,7 @@ fn math_parse(
                     let mut right_e = Expr::new();
                     math_parse(tokens, start, current, &mut right_e)?;
                     expr.right = Some(Box::new(right_e.clone()));
-                    expr.precedence = 4;
+                    expr.precedence = TOP_PREC;
                 }
             }
         }
@@ -425,7 +440,7 @@ fn traverse_expr_tree(expr: &Expr) -> Result<i64, &'static str> {
                             return Err("cannot do power to negative numbers");
                         }
                         Ok(traverse_expr_tree(l)?.pow(power.try_into().unwrap()))
-                    },
+                    }
                     None => traverse_expr_tree(l),
                 },
                 None => match &expr.right {
@@ -664,7 +679,45 @@ mod tests {
         let tokens = math_lexer(&"1 * +1".to_string())?;
         let mut expr = Expr::new();
         math_parse(&tokens, 0, 0, &mut expr)?;
-        assert!(traverse_expr_tree(&expr)? == 1 * (0+1));
+        assert!(traverse_expr_tree(&expr)? == 1 * (0 + 1));
+        Ok(())
+    }
+    #[test]
+    fn one_times_times_neg_one() -> Result<(), &'static str> {
+        let tokens = math_lexer(&"1**-1".to_string())?;
+        let mut expr = Expr::new();
+        let res = math_parse(&tokens, 0, 0, &mut expr);
+        match res {
+            Err(_) => {}
+            Ok(_) => return Err("incorrect unary op was not caught"),
+        }
+        Ok(())
+    }
+    #[test]
+    fn neg_one_times_mult_one() -> Result<(), &'static str> {
+        let tokens = math_lexer(&"-1 * *1".to_string())?;
+        let mut expr = Expr::new();
+        let res = math_parse(&tokens, 0, 0, &mut expr);
+        match res {
+            Err(_) => {}
+            Ok(_) => return Err("incorrect unary op was not caught"),
+        }
+        Ok(())
+    }
+    #[test]
+    fn neg_one_times_p_one_plus_four_time_four_p() -> Result<(), &'static str> {
+        let tokens = math_lexer(&"-1 * ( 1 + 4 * 4)".to_string())?;
+        let mut expr = Expr::new();
+        math_parse(&tokens, 0, 0, &mut expr)?;
+        assert!(traverse_expr_tree(&expr)? == -1 * (1 + 4 * 4));
+        Ok(())
+    }
+    #[test]
+    fn expr2_in_expr1_times_expr2_in_expr1() -> Result<(), &'static str> {
+        let tokens = math_lexer(&"(1 * -1) * (2 * -2)".to_string())?;
+        let mut expr = Expr::new();
+        math_parse(&tokens, 0, 0, &mut expr)?;
+        assert!(traverse_expr_tree(&expr)? == (1 * -1) * (2 * -2));
         Ok(())
     }
 }
