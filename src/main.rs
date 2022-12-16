@@ -1,4 +1,4 @@
-use std::io::{self, Write};
+use std::{io::{self, Write}, convert::TryInto};
 enum Ops {
     Add,
     Multiply,
@@ -373,62 +373,68 @@ fn math_parse(
     }
     Ok(())
 }
-fn traverse_expr_tree(expr: &Expr) -> i64 {
+fn traverse_expr_tree(expr: &Expr) -> Result<i64, &'static str> {
     match &expr.lit {
-        Some(Literal::Number(num)) => *num,
+        Some(Literal::Number(num)) => Ok(*num),
         Some(Literal::Op(op)) => match op {
             Ops::Add => match &expr.left {
                 Some(l) => match &expr.right {
-                    Some(r) => traverse_expr_tree(l) + traverse_expr_tree(r),
+                    Some(r) => Ok(traverse_expr_tree(l)? + traverse_expr_tree(r)?),
                     None => traverse_expr_tree(l),
                 },
                 None => match &expr.right {
                     Some(r) => traverse_expr_tree(r),
-                    None => 0,
+                    None => Ok(0),
                 },
             },
             Ops::Subtract => match &expr.left {
                 Some(l) => match &expr.right {
-                    Some(r) => traverse_expr_tree(l) - traverse_expr_tree(r),
-                    None => -traverse_expr_tree(l),
+                    Some(r) => Ok(traverse_expr_tree(l)? - traverse_expr_tree(r)?),
+                    None => Ok(-traverse_expr_tree(l)?),
                 },
                 None => match &expr.right {
-                    Some(r) => -traverse_expr_tree(r),
-                    None => 0,
+                    Some(r) => Ok(-traverse_expr_tree(r)?),
+                    None => Ok(0),
                 },
             },
             Ops::Multiply => match &expr.left {
                 Some(l) => match &expr.right {
-                    Some(r) => traverse_expr_tree(l) * traverse_expr_tree(r),
+                    Some(r) => Ok(traverse_expr_tree(l)? * traverse_expr_tree(r)?),
                     None => traverse_expr_tree(l),
                 },
                 None => match &expr.right {
                     Some(r) => traverse_expr_tree(r),
-                    None => 0,
+                    None => Ok(0),
                 },
             },
             Ops::Divide => match &expr.left {
                 Some(l) => match &expr.right {
-                    Some(r) => traverse_expr_tree(l) / traverse_expr_tree(r),
+                    Some(r) => Ok(traverse_expr_tree(l)? / traverse_expr_tree(r)?),
                     None => traverse_expr_tree(l),
                 },
                 None => match &expr.right {
                     Some(r) => traverse_expr_tree(r),
-                    None => 0,
+                    None => Ok(0),
                 },
             },
             Ops::Exponent => match &expr.left {
                 Some(l) => match &expr.right {
-                    Some(r) => traverse_expr_tree(l).pow(traverse_expr_tree(r).try_into().unwrap()),
+                    Some(r) => {
+                        let power = traverse_expr_tree(r)?;
+                        if power < 0 {
+                            return Err("cannot do power to negative numbers");
+                        }
+                        Ok(traverse_expr_tree(l)?.pow(power.try_into().unwrap()))
+                    },
                     None => traverse_expr_tree(l),
                 },
                 None => match &expr.right {
                     Some(r) => traverse_expr_tree(r),
-                    None => 0,
+                    None => Ok(0),
                 },
             },
         },
-        None => 0,
+        None => Ok(0),
     }
 }
 fn main() -> Result<(), &'static str> {
@@ -449,7 +455,7 @@ fn main() -> Result<(), &'static str> {
                         let mut expr = Expr::new();
                         let res = math_parse(&tokens, 0, 0, &mut expr);
                         match res {
-                            Ok(_) => println!("{}", traverse_expr_tree(&expr)),
+                            Ok(_) => println!("{}", traverse_expr_tree(&expr)?),
                             Err(s) => println!("{}", s),
                         }
                     }
@@ -471,7 +477,7 @@ mod tests {
         let tokens = math_lexer(&"5 ^ 5 * 4 - 3".to_string())?;
         let mut expr = Expr::new();
         math_parse(&tokens, 0, 0, &mut expr)?;
-        assert!(traverse_expr_tree(&expr) == 5i64.pow(5) * 4 - 3);
+        assert!(traverse_expr_tree(&expr)? == 5i64.pow(5) * 4 - 3);
         Ok(())
     }
     #[test]
@@ -479,7 +485,7 @@ mod tests {
         let tokens = math_lexer(&"4 + 4".to_string())?;
         let mut expr = Expr::new();
         math_parse(&tokens, 0, 0, &mut expr)?;
-        assert!(traverse_expr_tree(&expr) == 4 + 4);
+        assert!(traverse_expr_tree(&expr)? == 4 + 4);
         Ok(())
     }
     #[test]
@@ -487,7 +493,7 @@ mod tests {
         let tokens = math_lexer(&"5 * 4 - 3".to_string())?;
         let mut expr = Expr::new();
         math_parse(&tokens, 0, 0, &mut expr)?;
-        assert!(traverse_expr_tree(&expr) == 5 * 4 - 3);
+        assert!(traverse_expr_tree(&expr)? == 5 * 4 - 3);
         Ok(())
     }
     #[test]
@@ -495,7 +501,7 @@ mod tests {
         let tokens = math_lexer(&"4 - 4 * 3".to_string())?;
         let mut expr = Expr::new();
         math_parse(&tokens, 0, 0, &mut expr)?;
-        assert!(traverse_expr_tree(&expr) == 4 - 4 * 3);
+        assert!(traverse_expr_tree(&expr)? == 4 - 4 * 3);
         Ok(())
     }
     #[test]
@@ -503,7 +509,7 @@ mod tests {
         let tokens = math_lexer(&"3 / 3".to_string())?;
         let mut expr = Expr::new();
         math_parse(&tokens, 0, 0, &mut expr)?;
-        assert!(traverse_expr_tree(&expr) == 3 / 3);
+        assert!(traverse_expr_tree(&expr)? == 3 / 3);
         Ok(())
     }
     #[test]
@@ -511,7 +517,7 @@ mod tests {
         let tokens = math_lexer(&"6 ^ 2 - 4 * 3".to_string())?;
         let mut expr = Expr::new();
         math_parse(&tokens, 0, 0, &mut expr)?;
-        assert!(traverse_expr_tree(&expr) == 6i64.pow(2) - 4 * 3);
+        assert!(traverse_expr_tree(&expr)? == 6i64.pow(2) - 4 * 3);
         Ok(())
     }
     #[test]
@@ -519,7 +525,7 @@ mod tests {
         let tokens = math_lexer(&"2 ^ 2 ^ 2".to_string())?;
         let mut expr = Expr::new();
         math_parse(&tokens, 0, 0, &mut expr)?;
-        assert!(traverse_expr_tree(&expr) == 2i64.pow(2).pow(2));
+        assert!(traverse_expr_tree(&expr)? == 2i64.pow(2).pow(2));
         Ok(())
     }
     #[test]
@@ -527,7 +533,7 @@ mod tests {
         let tokens = math_lexer(&"2 ^ 2 / 2".to_string())?;
         let mut expr = Expr::new();
         math_parse(&tokens, 0, 0, &mut expr)?;
-        assert!(traverse_expr_tree(&expr) == 2i64.pow(2) / 2);
+        assert!(traverse_expr_tree(&expr)? == 2i64.pow(2) / 2);
         Ok(())
     }
     #[test]
@@ -535,7 +541,7 @@ mod tests {
         let tokens = math_lexer(&"3 - 4 * 5 + 3 ^ 2".to_string())?;
         let mut expr = Expr::new();
         math_parse(&tokens, 0, 0, &mut expr)?;
-        assert!(traverse_expr_tree(&expr) == 3 - 4 * 5 + 3i64.pow(2));
+        assert!(traverse_expr_tree(&expr)? == 3 - 4 * 5 + 3i64.pow(2));
         Ok(())
     }
     #[test]
@@ -543,7 +549,7 @@ mod tests {
         let tokens = math_lexer(&"(4 - 3 ) * (3 - 5)".to_string())?;
         let mut expr = Expr::new();
         math_parse(&tokens, 0, 0, &mut expr)?;
-        assert!(traverse_expr_tree(&expr) == (4 - 3) * (3 - 5));
+        assert!(traverse_expr_tree(&expr)? == (4 - 3) * (3 - 5));
         Ok(())
     }
     #[test]
@@ -551,7 +557,7 @@ mod tests {
         let tokens = math_lexer(&"(((1 + 1)))".to_string())?;
         let mut expr = Expr::new();
         math_parse(&tokens, 0, 0, &mut expr)?;
-        assert!(traverse_expr_tree(&expr) == (1 + 1));
+        assert!(traverse_expr_tree(&expr)? == (1 + 1));
         Ok(())
     }
     #[test]
@@ -559,7 +565,7 @@ mod tests {
         let tokens = math_lexer(&"((1 + 3) * (4 + 5))".to_string())?;
         let mut expr = Expr::new();
         math_parse(&tokens, 0, 0, &mut expr)?;
-        assert!(traverse_expr_tree(&expr) == ((1 + 3) * (4 + 5)));
+        assert!(traverse_expr_tree(&expr)? == ((1 + 3) * (4 + 5)));
         Ok(())
     }
     #[test]
@@ -607,7 +613,7 @@ mod tests {
         let tokens = math_lexer(&"-1-1".to_string())?;
         let mut expr = Expr::new();
         math_parse(&tokens, 0, 0, &mut expr)?;
-        assert!(traverse_expr_tree(&expr) == -1 - 1);
+        assert!(traverse_expr_tree(&expr)? == -1 - 1);
         Ok(())
     }
     #[test]
@@ -615,7 +621,7 @@ mod tests {
         let tokens = math_lexer(&"1--1".to_string())?;
         let mut expr = Expr::new();
         math_parse(&tokens, 0, 0, &mut expr)?;
-        assert!(traverse_expr_tree(&expr) == 1 - -1);
+        assert!(traverse_expr_tree(&expr)? == 1 - -1);
         Ok(())
     }
     #[test]
@@ -634,7 +640,7 @@ mod tests {
         let tokens = math_lexer(&"1*--1".to_string())?;
         let mut expr = Expr::new();
         math_parse(&tokens, 0, 0, &mut expr)?;
-        assert!(traverse_expr_tree(&expr) == 1 * --1);
+        assert!(traverse_expr_tree(&expr)? == 1 * --1);
         Ok(())
     }
     #[test]
@@ -642,7 +648,7 @@ mod tests {
         let tokens = math_lexer(&"5 * -1 * (1 + 4)".to_string())?;
         let mut expr = Expr::new();
         math_parse(&tokens, 0, 0, &mut expr)?;
-        assert!(traverse_expr_tree(&expr) == 5 * -1 * (1 + 4));
+        assert!(traverse_expr_tree(&expr)? == 5 * -1 * (1 + 4));
         Ok(())
     }
     #[test]
@@ -650,7 +656,7 @@ mod tests {
         let tokens = math_lexer(&"1 * -----1".to_string())?;
         let mut expr = Expr::new();
         math_parse(&tokens, 0, 0, &mut expr)?;
-        assert!(traverse_expr_tree(&expr) == 1 * -----1);
+        assert!(traverse_expr_tree(&expr)? == 1 * -----1);
         Ok(())
     }
     #[test]
@@ -658,7 +664,7 @@ mod tests {
         let tokens = math_lexer(&"1 * +1".to_string())?;
         let mut expr = Expr::new();
         math_parse(&tokens, 0, 0, &mut expr)?;
-        assert!(traverse_expr_tree(&expr) == 1 * (0+1));
+        assert!(traverse_expr_tree(&expr)? == 1 * (0+1));
         Ok(())
     }
 }
