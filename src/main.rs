@@ -471,9 +471,13 @@ fn main() -> Result<(), &'static str> {
                 match tokens_res {
                     Ok(tokens) => {
                         let mut expr = Expr::new();
-                        let res = math_parse(&tokens, 0, 0, &mut expr);
-                        match res {
-                            Ok(_) => println!("{}", traverse_expr_tree(&expr)?),
+                        let parse_res = math_parse(&tokens, 0, 0, &mut expr);
+                        let res = traverse_expr_tree(&expr);
+                        match parse_res {
+                            Ok(_) => match res {
+                                Ok(v) => println!("{}", v),
+                                Err(s) => println!("{}", s),
+                            },
                             Err(s) => println!("{}", s),
                         }
                     }
