@@ -90,7 +90,7 @@ fn math_lexer(math_expr: &String) -> Result<Vec<Token>, &'static str> {
             tokens.push(Token::Number(
                 token.parse::<i64>().expect("a number that fits with i64"),
             ));
-            if token.len() > 0 && token.as_bytes()[0] == b'0' {
+            if token.len() > 1 && token.as_bytes()[0] == b'0' {
                 return Err("numbers cannot have leading zeroes");
             }
             token.clear();
@@ -427,7 +427,13 @@ fn traverse_expr_tree(expr: &Expr) -> Result<i64, &'static str> {
             },
             Ops::Divide => match &expr.left {
                 Some(l) => match &expr.right {
-                    Some(r) => Ok(traverse_expr_tree(l)? / traverse_expr_tree(r)?),
+                    Some(r) => {
+                        let right = traverse_expr_tree(r)?;
+                        if right == 0 {
+                            return Err("cannot divide by zero");
+                        }
+                        Ok(traverse_expr_tree(l)? / right)
+                    },
                     None => traverse_expr_tree(l),
                 },
                 None => match &expr.right {
@@ -725,6 +731,30 @@ mod tests {
         let mut expr = Expr::new();
         math_parse(&tokens, 0, 0, &mut expr)?;
         assert!(traverse_expr_tree(&expr)? == (1 * -1) * (2 * -2));
+        Ok(())
+    }
+    #[test]
+    fn single_zero() -> Result<(), &'static str> {
+        let tokens = math_lexer(&"1 + 0".to_string())?;
+        let mut expr = Expr::new();
+        math_parse(&tokens, 0, 0, &mut expr)?;
+        let eval_res = traverse_expr_tree(&expr);
+        match eval_res {
+            Ok(_) => {},
+            Err(_) => return Err("single zeroes should be allowed")
+        }
+        Ok(())
+    }
+    #[test]
+    fn divide_by_zero() -> Result<(), &'static str> {
+        let tokens = math_lexer(&"1 / 0".to_string())?;
+        let mut expr = Expr::new();
+        math_parse(&tokens, 0, 0, &mut expr)?;
+        let eval_res = traverse_expr_tree(&expr);
+        match eval_res {
+            Ok(_) => return Err("divide by zero not caught"),
+            Err(_) => {}
+        }
         Ok(())
     }
 }
