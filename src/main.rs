@@ -356,7 +356,6 @@ fn math_parse(
                         right: None,
                         precedence: 0,
                     }));
-                    expr.precedence = TOP_PREC;
                     current += 1;
                     if current < tokens.len() {
                         match &tokens[current] {
@@ -384,9 +383,9 @@ fn math_parse(
                     let mut right_e = Expr::new();
                     math_parse(tokens, start, current, &mut right_e)?;
                     expr.right = Some(Box::new(right_e.clone()));
-                    expr.precedence = TOP_PREC;
                 }
             }
+            expr.precedence = TOP_PREC;
         }
     }
     Ok(())
