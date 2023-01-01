@@ -117,7 +117,7 @@ fn math_lexer(math_expr: &String) -> Result<Vec<Token>, &'static str> {
             } else if c == '-' {
                 tokens.push(Token::Operator(Ops::Subtract));
             }
-        } else if math_expr_bytes[idx] != b' ' {
+        } else if math_expr_bytes[idx] != b' ' && math_expr_bytes[idx] != b'\t' {
             return Err("Unknown token");
         }
         idx += 1;
