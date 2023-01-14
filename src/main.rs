@@ -371,14 +371,13 @@ fn math_parse(
                     }
                 }
                 _ => {
-                    match &tokens[current] {
-                        Token::Operator(right_op) => match right_op {
+                    if let Token::Operator(right_op) = &tokens[current] {
+                        match right_op {
                             Ops::Multiply | Ops::Divide => {
                                 return Err("Multiplication or Division is not a unary operator.")
                             }
                             _ => {}
-                        },
-                        _ => {}
+                        }
                     }
                     let mut right_e = Expr::new();
                     math_parse(tokens, start, current, &mut right_e)?;
